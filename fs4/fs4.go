@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	fs4s "github.com/pJes2/fs4/fs4strings"
 )
 
 // FS4 is the core struct.
@@ -19,15 +21,19 @@ type FS4 struct {
 
 // BBU represents struct responsible for Browser Based Uploads.
 type BBU struct {
-	Conditions      map[string]string
+	Conditions      Conditions
+	DateStringISO   string
+	Credential      string
 	config          *S3Config
 	minutesToExpiry int
 	expiration      string
 	dateString      string
-	dateStringISO   string
 	secretKey       string
 	region          string
 }
+
+// Conditions ...
+type Conditions []map[string]string
 
 // bbuParams represents a struct from which base64 policy and signature are constructed.
 type bbuParams struct {
@@ -67,33 +73,89 @@ func NewClient(s3Config *S3Config) *FS4 {
 }
 
 // NewBBU returns new BBU object initialized with conditions and for how long it will stay valid (number of minutes as integer).
-func (fs4 *FS4) NewBBU(conditions map[string]string, minutesToExpiry int) {
+func (fs4 *FS4) NewBBU(minutesToExpiry int) *BBU {
 	now := time.Now()
 	dateString := dateString(now)
-	fs4.BBU = *BBU{
-		Conditions:    conditions,
+	fs4.BBU = &BBU{
 		config:        fs4.config,
 		dateString:    dateString,
-		dateStringISO: dateStringISO(dateString),
+		DateStringISO: dateStringISO(dateString),
+		Credential:    fs4.config.credential(dateString),
 		expiration:    expirationDate(now, minutesToExpiry),
 	}
+
+	return fs4.BBU
 }
 
+// SetDefaultConditions sets condition required to create policy and by HTML form.
+func (bbu *BBU) SetDefaultConditions() *BBU {
+	bbu.Conditions = []map[string]string{
+		map[string]string{
+			fs4s.Bucket: bbu.config.Bucket,
+		},
+		map[string]string{
+			fs4s.XAMZCredential: bbu.Credential,
+		},
+		map[string]string{
+			fs4s.XAMZAlgorithm: fs4s.AWS4HmacSha256,
+		},
+		map[string]string{
+			fs4s.XAMZDate: bbu.DateStringISO,
+		},
+	}
+
+	return bbu
+}
+
+// AddCondition adds a key-value condition at index idx to Conditions slice.
+func (bbu *BBU) AddCondition(key, value string, idx int) *BBU {
+	if idx > len(bbu.Conditions) {
+		return bbu.appendCondition(key, value)
+	}
+
+	condition := []map[string]string{map[string]string{key: value}}
+	bbu.Conditions = append(bbu.Conditions[:idx], append(condition, bbu.Conditions[idx:]...)...)
+
+	return bbu
+}
+
+// AppendCondition appends a key-value map to Conditions slice.
+func (bbu *BBU) appendCondition(key, value string) *BBU {
+	bbu.Conditions = append(bbu.Conditions, map[string]string{key: value})
+
+	return bbu
+}
+
+// FormFields returns JSON response required to fill the html upload form fields.
 func (bbu *BBU) FormFields() ([]byte, error) {
 	bbuParams := bbu.toParams()
 
+	redirectURI := bbu.conditionForKey(fs4s.SuccessActionRedirect)
+	key := bbu.conditionForKey(fs4s.Key)
+
 	bbuResponse := &BBUResponse{
 		URL:         bbu.bucketURL(),
-		RedirectURI: bbu.Conditions[fs4strings.SuccessActionRedirect],
+		RedirectURI: redirectURI,
 		AccessKey:   bbu.config.AccessKey,
 		Credential:  bbu.config.credential(bbu.dateString),
-		Key:         bbu.Conditions[fs4strings.Key],
-		Date:        bbu.dateStringISO,
+		Key:         key,
+		Date:        bbu.DateStringISO,
 		Policy:      bbuParams.toPolicy(),
 		Signature:   bbuParams.toSignature(),
 	}
 
 	return json.Marshal(bbuResponse)
+}
+
+func (bbu *BBU) conditionForKey(key string) string {
+	for i := range bbu.Conditions {
+		v, ok := bbu.Conditions[i][key]
+		if ok {
+			return v
+		}
+	}
+
+	return ""
 }
 
 func (bbu *BBU) toParams() *bbuParams {
@@ -106,10 +168,16 @@ func (bbu *BBU) toParams() *bbuParams {
 	}
 }
 
+func (bbu *BBU) bucketURL() string {
+	return "http://" + bbu.config.Bucket + ".s3.amazonaws.com/"
+}
+
+// Policy returns base64 policy from conditions, s3 config and date set on BBU.
 func (bbu *BBU) Policy() string {
 	return bbu.toParams().toPolicy()
 }
 
+// Signature returns signature calculated from policy, s3 config and date set on BBU.
 func (bbu *BBU) Signature() string {
 	return bbu.toParams().toSignature()
 }
@@ -129,8 +197,8 @@ func (bbu *bbuParams) toSignature() string {
 		bbu.toPolicy()
 	}
 
-	dateKey := shmacSHA256("AWS4"+bbu.config.SecretKey, bbu.Date)
-	dateRegionKey := hmacSHA256(dateKey, bbu.config.Region)
+	dateKey := shmacSHA256("AWS4"+bbu.SecretKey, bbu.Date)
+	dateRegionKey := hmacSHA256(dateKey, bbu.Region)
 	dateRegionServiceKey := hmacSHA256(dateRegionKey, "s3")
 	signingKey := hmacSHA256(dateRegionServiceKey, "aws4_request")
 
@@ -138,5 +206,5 @@ func (bbu *bbuParams) toSignature() string {
 }
 
 func (c *S3Config) credential(dateString string) string {
-	return strings.Join([]string{c.AccessKey, dateString, c.Region, credentialScopeType}, "/")
+	return strings.Join([]string{c.AccessKey, dateString, c.Region, fs4s.CredentialScope}, "/")
 }
