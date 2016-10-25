@@ -28,10 +28,9 @@ type FS4 struct {
 
 // Uploader represents object used to upload files to s3 bucket.
 type Uploader struct {
-	bucket          string
-	uploader        *s3manager.Uploader
-	client          *s3.S3
-	signatureExpiry time.Duration
+	bucket   string
+	uploader *s3manager.Uploader
+	client   *s3.S3
 }
 
 // BBU represents struct responsible for Browser Based Uploads.
@@ -88,7 +87,7 @@ func NewClient(s3Config *S3Config) *FS4 {
 }
 
 // UploadFile uploads provided file to s3 bucket.
-func (u *Uploader) UploadFile(key, mimetype string, body io.Reader) (string, error) {
+func (u *Uploader) UploadFile(key, mimetype string, body io.Reader, expiry time.Duration) (string, error) {
 	if _, err := u.uploader.Upload(&s3manager.UploadInput{
 		Body:        body,
 		Bucket:      aws.String(u.bucket),
@@ -103,20 +102,19 @@ func (u *Uploader) UploadFile(key, mimetype string, body io.Reader) (string, err
 		Key:    aws.String(key),
 	})
 
-	return req.Presign(u.signatureExpiry * time.Minute)
+	return req.Presign(expiry)
 }
 
 // NewUploader initializes, sets to fs4.Uploader and returns a new Uploader.
-func (fs4 *FS4) NewUploader(signatureExpiry int) *Uploader {
+func (fs4 *FS4) NewUploader() *Uploader {
 	creds := credentials.NewStaticCredentials(fs4.config.AccessKey, fs4.config.SecretKey, "")
 	cfg := aws.NewConfig().WithRegion(fs4.config.Region).WithCredentials(creds)
 	svc := s3.New(session.New(), cfg)
 
 	fs4.Uploader = &Uploader{
-		bucket:          fs4.config.Bucket,
-		client:          svc,
-		uploader:        s3manager.NewUploaderWithClient(svc),
-		signatureExpiry: time.Duration(signatureExpiry),
+		bucket:   fs4.config.Bucket,
+		client:   svc,
+		uploader: s3manager.NewUploaderWithClient(svc),
 	}
 
 	return fs4.Uploader
