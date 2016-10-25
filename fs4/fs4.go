@@ -84,11 +84,13 @@ func (fs4 *FS4) NewBBU(minutesToExpiry int) *BBU {
 		expiration:    expirationDate(now, minutesToExpiry),
 	}
 
+	fs4.BBU.setDefaultConditions()
+
 	return fs4.BBU
 }
 
-// SetDefaultConditions sets condition required to create policy and by HTML form.
-func (bbu *BBU) SetDefaultConditions() *BBU {
+// setDefaultConditions sets condition required to create policy and by HTML form.
+func (bbu *BBU) setDefaultConditions() *BBU {
 	bbu.Conditions = []map[string]string{
 		map[string]string{
 			fs4s.Bucket: bbu.config.Bucket,
@@ -107,20 +109,8 @@ func (bbu *BBU) SetDefaultConditions() *BBU {
 	return bbu
 }
 
-// AddCondition adds a key-value condition at index idx to Conditions slice.
-func (bbu *BBU) AddCondition(key, value string, idx int) *BBU {
-	if idx > len(bbu.Conditions) {
-		return bbu.appendCondition(key, value)
-	}
-
-	condition := []map[string]string{map[string]string{key: value}}
-	bbu.Conditions = append(bbu.Conditions[:idx], append(condition, bbu.Conditions[idx:]...)...)
-
-	return bbu
-}
-
-// AppendCondition appends a key-value map to Conditions slice.
-func (bbu *BBU) appendCondition(key, value string) *BBU {
+// AddCondition adds a key-value condition to Conditions slice.
+func (bbu *BBU) AddCondition(key, value string) *BBU {
 	bbu.Conditions = append(bbu.Conditions, map[string]string{key: value})
 
 	return bbu
