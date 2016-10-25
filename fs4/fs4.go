@@ -7,16 +7,31 @@ package fs4
 import (
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	fs4s "github.com/pJes2/fs4/fs4strings"
 )
 
 // FS4 is the core struct.
 type FS4 struct {
-	config *S3Config
-	BBU    *BBU
+	config   *S3Config
+	BBU      *BBU
+	Uploader *Uploader
+}
+
+// Uploader represents object used to upload files to s3 bucket.
+type Uploader struct {
+	bucket          string
+	uploader        *s3manager.Uploader
+	client          *s3.S3
+	signatureExpiry time.Duration
 }
 
 // BBU represents struct responsible for Browser Based Uploads.
@@ -32,7 +47,7 @@ type BBU struct {
 	region          string
 }
 
-// Conditions ...
+// Conditions represents BBU conditions slice used to calculate policy and signature.
 type Conditions []map[string]string
 
 // bbuParams represents a struct from which base64 policy and signature are constructed.
@@ -72,7 +87,42 @@ func NewClient(s3Config *S3Config) *FS4 {
 	}
 }
 
-// NewBBU returns new BBU object initialized with conditions and for how long it will stay valid (number of minutes as integer).
+// UploadFile uploads provided file to s3 bucket.
+func (u *Uploader) UploadFile(key, mimetype string, body io.Reader) (string, error) {
+	if _, err := u.uploader.Upload(&s3manager.UploadInput{
+		Body:        body,
+		Bucket:      aws.String(u.bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(mimetype),
+	}); err != nil {
+		return "", err
+	}
+
+	req, _ := u.client.GetObjectRequest(&s3.GetObjectInput{
+		Bucket: aws.String(u.bucket),
+		Key:    aws.String(key),
+	})
+
+	return req.Presign(u.signatureExpiry * time.Minute)
+}
+
+// NewUploader initializes, sets to fs4.Uploader and returns a new Uploader.
+func (fs4 *FS4) NewUploader(signatureExpiry int) *Uploader {
+	creds := credentials.NewStaticCredentials(fs4.config.AccessKey, fs4.config.SecretKey, "")
+	cfg := aws.NewConfig().WithRegion(fs4.config.Region).WithCredentials(creds)
+	svc := s3.New(session.New(), cfg)
+
+	fs4.Uploader = &Uploader{
+		bucket:          fs4.config.Bucket,
+		client:          svc,
+		uploader:        s3manager.NewUploaderWithClient(svc),
+		signatureExpiry: time.Duration(signatureExpiry),
+	}
+
+	return fs4.Uploader
+}
+
+// NewBBU sets to fs4.BBU and returns new BBU object initialized with number of minutes until the object expires.
 func (fs4 *FS4) NewBBU(minutesToExpiry int) *BBU {
 	now := time.Now()
 	dateString := dateString(now)
