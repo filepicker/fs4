@@ -107,9 +107,7 @@ func (u *Uploader) UploadFile(key, mimetype string, body io.Reader, expiry time.
 
 // NewUploader initializes, sets to fs4.Uploader and returns a new Uploader.
 func (fs4 *FS4) NewUploader() *Uploader {
-	creds := credentials.NewStaticCredentials(fs4.config.AccessKey, fs4.config.SecretKey, "")
-	cfg := aws.NewConfig().WithRegion(fs4.config.Region).WithCredentials(creds)
-	svc := s3.New(session.New(), cfg)
+	svc := prepareSVC(fs4.config)
 
 	fs4.Uploader = &Uploader{
 		bucket:   fs4.config.Bucket,
@@ -118,6 +116,29 @@ func (fs4 *FS4) NewUploader() *Uploader {
 	}
 
 	return fs4.Uploader
+}
+
+// GetBucketRegion returns region of the bucket set in s3Config.
+func GetBucketRegion(s3Config *S3Config) (string, error) {
+	svc := prepareSVC(s3Config)
+
+	params := &s3.GetBucketLocationInput{
+		Bucket: aws.String(s3Config.Bucket),
+	}
+
+	resp, err := svc.GetBucketLocation(params)
+	if err != nil {
+		return "", err
+	}
+
+	return *resp.LocationConstraint, nil
+}
+
+// prepareSVC returns s3.S3 object configured with data from s3Config.
+func prepareSVC(s3Config *S3Config) *s3.S3 {
+	creds := credentials.NewStaticCredentials(s3Config.AccessKey, s3Config.SecretKey, "")
+	cfg := aws.NewConfig().WithRegion(s3Config.Region).WithCredentials(creds)
+	return s3.New(session.New(), cfg)
 }
 
 // NewBBU sets to fs4.BBU and returns new BBU object initialized with number of minutes until the object expires.
