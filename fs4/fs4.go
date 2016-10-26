@@ -73,10 +73,11 @@ type BBUResponse struct {
 
 // S3Config represents user's s3 application configuration.
 type S3Config struct {
-	AccessKey string
-	SecretKey string
-	Bucket    string
-	Region    string
+	AccessKey  string
+	SecretKey  string
+	Bucket     string
+	Region     string
+	Accelerate bool
 }
 
 // NewClient returns new FS4 object initialized with s3Config.
@@ -228,7 +229,12 @@ func (bbu *BBU) toParams() *bbuParams {
 }
 
 func (bbu *BBU) bucketURL() string {
-	return "http://" + bbu.config.Bucket + ".s3.amazonaws.com/"
+	s3s := ".s3"
+	if bbu.config.Accelerate {
+		s3s = ".s3-accelerate"
+	}
+
+	return "http://" + bbu.config.Bucket + s3s + ".amazonaws.com/"
 }
 
 // Policy returns base64 policy from conditions, s3 config and date set on BBU.
