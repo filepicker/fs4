@@ -7,6 +7,7 @@ package fs4
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -63,6 +64,7 @@ type bbuParams struct {
 type BBUResponse struct {
 	URL         string `json:"url"`
 	RedirectURI string `json:"success_action_redirect"`
+	Algorithm   string `json:"x_amz_algorithm"`
 	Credential  string `json:"x_amz_credential"`
 	AccessKey   string `json:"aws_access_key_id"`
 	Signature   string `json:"signature"`
@@ -135,6 +137,24 @@ func GetBucketRegion(s3Config *S3Config) (string, error) {
 	return *resp.LocationConstraint, nil
 }
 
+// HeadS3Object ...
+func HeadS3Object(key string, s3Config *S3Config) {
+	svc := prepareSVC(s3Config)
+
+	params := &s3.HeadObjectInput{
+		Bucket: aws.String(s3Config.Bucket),
+		Key:    aws.String(key),
+	}
+
+	resp, err := svc.HeadObject(params)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	fmt.Println(resp)
+}
+
 // prepareSVC returns s3.S3 object configured with data from s3Config.
 func prepareSVC(s3Config *S3Config) *s3.S3 {
 	creds := credentials.NewStaticCredentials(s3Config.AccessKey, s3Config.SecretKey, "")
@@ -197,6 +217,7 @@ func (bbu *BBU) FormFields() ([]byte, error) {
 		URL:         bbu.bucketURL(),
 		RedirectURI: redirectURI,
 		AccessKey:   bbu.config.AccessKey,
+		Algorithm:   fs4s.AWS4HmacSha256,
 		Credential:  bbu.config.credential(bbu.dateString),
 		Key:         key,
 		Date:        bbu.DateStringISO,
