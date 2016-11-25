@@ -206,6 +206,15 @@ func (bbu *BBU) AddCondition(key, value string) *BBU {
 	return bbu
 }
 
+// AddConditions adds a multiple key-value conditions to Conditions slice.
+func (bbu *BBU) AddConditions(conditions map[string]string) *BBU {
+	for k, v := range conditions {
+		bbu.AddCondition(k, v)
+	}
+
+	return bbu
+}
+
 // FormFields returns JSON response required to fill the html upload form fields.
 func (bbu *BBU) FormFields() ([]byte, error) {
 	bbuParams := bbu.toParams()
