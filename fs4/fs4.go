@@ -63,6 +63,7 @@ type bbuParams struct {
 // BBUResponse represents a struct with data required to fill the html upload form fields.
 type BBUResponse struct {
 	URL         string `json:"url"`
+	ACL         string `json:"acl"`
 	RedirectURI string `json:"success_action_redirect"`
 	Algorithm   string `json:"x_amz_algorithm"`
 	Credential  string `json:"x_amz_credential"`
@@ -77,6 +78,7 @@ type BBUResponse struct {
 type S3Config struct {
 	AccessKey  string
 	SecretKey  string
+	Path       string
 	Bucket     string
 	Region     string
 	Accelerate bool
@@ -221,9 +223,11 @@ func (bbu *BBU) FormFields() ([]byte, error) {
 
 	redirectURI := bbu.conditionForKey(fs4s.SuccessActionRedirect)
 	key := bbu.conditionForKey(fs4s.Key)
+	acl := bbu.conditionForKey(fs4s.Acl)
 
 	bbuResponse := &BBUResponse{
 		URL:         bbu.bucketURL(),
+		ACL:         acl,
 		RedirectURI: redirectURI,
 		AccessKey:   bbu.config.AccessKey,
 		Algorithm:   fs4s.AWS4HmacSha256,
